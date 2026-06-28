@@ -63,19 +63,18 @@ jobs:
           compression = true
           compression_level = 6
           EOF
-          ccache -z
           echo "✅ ccache configured"
 
-      # ========== Build firmware ==========
+      # ========== Build firmware using build.sh ==========
       - name: Build firmware
         run: |
-          . $IDF_PATH/export.sh
-          
           # Enable ccache
           export CCACHE_DIR=~/.ccache
           export IDF_CCACHE_ENABLE=1
           
-          idf.py build
+          # Use build.sh with clean to ensure fresh sdkconfig
+          chmod +x build.sh
+          bash build.sh clean
           
           # Show ccache stats
           ccache -s
