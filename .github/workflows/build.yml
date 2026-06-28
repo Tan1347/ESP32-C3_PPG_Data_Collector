@@ -144,12 +144,14 @@ jobs:
           # Build release body (limit to 300 chars)
           RELEASE_BODY="Firmware: v${VERSION} (${CURRENT_SHORT})"$'\n\n'"Changes:"$'\n'"${COMMITS}"
           
-          if [ ${#RELEASE_BODY} -gt 300 ]; then
-            RELEASE_BODY="${RELEASE_BODY:0:297}..."
+          RELEASE_LEN=$(echo "$RELEASE_BODY" | wc -c)
+          if [ "$RELEASE_LEN" -gt 300 ]; then
+            RELEASE_BODY=$(echo "$RELEASE_BODY" | head -c 297)
+            RELEASE_BODY="${RELEASE_BODY}..."
           fi
           
           echo "$RELEASE_BODY" > /tmp/release_body.txt
-          echo "📋 Release notes (${#RELEASE_BODY} chars):"
+          echo "📋 Release notes:"
           cat /tmp/release_body.txt
 
       # ========== Delete old release ==========

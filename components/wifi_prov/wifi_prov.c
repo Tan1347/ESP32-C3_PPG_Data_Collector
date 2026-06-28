@@ -331,7 +331,6 @@ esp_err_t wifi_prov_get_list_json(char *buf, size_t len)
                        s_current_ip);
     for (int i = 0; i < s_cred_count; i++) {
         if (i > 0) pos += snprintf(buf + pos, len - pos, ",");
-        bool is_current = s_connected && strcmp(s_creds[i].ssid, s_current_ip) == 0;
         pos += snprintf(buf + pos, len - pos,
                         "{\"idx\":%d,\"ssid\":\"%s\",\"has_pass\":%s,"
                         "\"priority\":%d,\"rssi\":%d,\"fails\":%d}",
