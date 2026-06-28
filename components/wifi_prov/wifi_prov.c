@@ -36,6 +36,7 @@ static SemaphoreHandle_t s_creds_mutex = NULL;
 static bool s_connected = false;
 static esp_netif_t *s_sta_netif = NULL;
 static char s_current_ip[16] = {0};
+static char s_current_ssid[33] = {0};  /* Currently connected WiFi SSID */
 
 /* 指数退避重连 */
 static esp_timer_handle_t s_reconnect_timer = NULL;
@@ -163,6 +164,7 @@ static void wifi_event_handler(void *arg, esp_event_base_t event_base,
 
         case WIFI_EVENT_STA_DISCONNECTED:
             s_connected = false;
+            s_current_ssid[0] = '\0';  /* Clear connected SSID */
             ESP_LOGW(TAG, "WiFi disconnected, exp backoff");
             schedule_reconnect();
             break;
@@ -353,7 +355,7 @@ esp_err_t wifi_prov_get_detail_json(uint8_t index, char *buf, size_t len)
     xSemaphoreTake(s_creds_mutex, portMAX_DELAY);
 
     /* Check if this WiFi is currently connected */
-    bool is_connected = s_connected && strcmp(s_creds[index].ssid, s_current_ip) == 0;
+    bool is_connected = s_connected && strcmp(s_creds[index].ssid, s_current_ssid) == 0;
 
     snprintf(buf, len,
              "{\"idx\":%d,\"ssid\":\"%s\",\"has_pass\":%s,"
@@ -418,6 +420,10 @@ esp_err_t wifi_prov_auto_connect(void)
 
         ESP_LOGI(TAG, "Try connect WiFi #%d: SSID=[%s] pwd_len=%d prio=%d",
                  i, cred->ssid, (int)strlen(cred->password), cred->priority);
+
+        /* Save SSID for connection status tracking */
+        strncpy(s_current_ssid, cred->ssid, sizeof(s_current_ssid) - 1);
+        s_current_ssid[sizeof(s_current_ssid) - 1] = '\0';
 
         wifi_config_t wifi_cfg = {0};
         strncpy((char *)wifi_cfg.sta.ssid, cred->ssid, sizeof(wifi_cfg.sta.ssid));
