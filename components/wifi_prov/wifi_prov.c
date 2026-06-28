@@ -325,9 +325,13 @@ esp_err_t wifi_prov_clear_all(void)
 
 esp_err_t wifi_prov_get_list_json(char *buf, size_t len)
 {
-    int pos = snprintf(buf, len, "{\"count\":%d,\"list\":[", s_cred_count);
+    int pos = snprintf(buf, len, "{\"count\":%d,\"connected\":%s,\"ip\":\"%s\",\"list\":[",
+                       s_cred_count,
+                       s_connected ? "true" : "false",
+                       s_current_ip);
     for (int i = 0; i < s_cred_count; i++) {
         if (i > 0) pos += snprintf(buf + pos, len - pos, ",");
+        bool is_current = s_connected && strcmp(s_creds[i].ssid, s_current_ip) == 0;
         pos += snprintf(buf + pos, len - pos,
                         "{\"idx\":%d,\"ssid\":\"%s\",\"has_pass\":%s,"
                         "\"priority\":%d,\"rssi\":%d,\"fails\":%d}",
