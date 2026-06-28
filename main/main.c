@@ -632,7 +632,10 @@ static void enter_wifi_mode(void)
     /* Connected */
     char ip[16];
     wifi_prov_get_ip(ip, sizeof(ip));
-    printf("WiFi connected, IP: %s\n", ip);
+    printf("========================================\n");
+    printf("  WiFi Connected!\n");
+    printf("  IP Address: %s\n", ip);
+    printf("========================================\n");
 
     /* Get network time */
     esp_http_client_config_t http_cfg = {
