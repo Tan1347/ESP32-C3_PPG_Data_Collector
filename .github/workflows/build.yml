@@ -154,6 +154,102 @@ jobs:
           echo "📋 Release notes:"
           cat /tmp/release_body.txt
 
+      # ========== Create release ==========
+      - name: Create GitHub Release
+        if: success()
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: v${{ steps.version.outputs.version }}
+          name: "Firmware v${{ steps.version.outputs.version }}"
+          body_path: /tmp/release_body.txt
+          files: /tmp/ppg-tf-esp32c3-v${{ steps.version.outputs.version }}.7z
+          draft: false
+          prerelease: false
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      # ========== Summary ==========
+      - name: Build summary
+        if: always()
+        run: |
+          if [ "${{ job.status }}" = "success" ]; then
+            echo "✅ Build succeeded"
+            echo "📦 Version: v${{ steps.version.outputs.version }}"
+            echo "📦 Firmware: ${{ steps.firmware.outputs.size_kb }}KB"
+          else
+            echo "❌ Build failed"
+          fi
+
+  cleanup:
+    needs: build
+    if: success()
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      actions: write
+
+    steps:
+      - name: Cleanup old releases, tags, and workflow runs
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          echo "🗑️ Cleaning up old releases (keeping last 3)..."
+          
+          # Get releases sorted by creation date (newest first)
+          RELEASES=$(gh release list --limit 100 --json tagName,createdAt --jq 'sort_by(.createdAt) | reverse | .[].tagName')
+          
+          COUNT=0
+          for TAG in $RELEASES; do
+            COUNT=$((COUNT + 1))
+            if [ $COUNT -gt 3 ]; then
+              echo "  Deleting release: $TAG"
+              gh release delete "$TAG" --yes --cleanup-tag 2>/dev/null || true
+            fi
+          done
+          
+          echo "🗑️ Cleaning up old tags..."
+          TAGS=$(git tag -l "v*" --sort=-creatordate | head -20)
+          COUNT=0
+          for TAG in $TAGS; do
+            COUNT=$((COUNT + 1))
+            if [ $COUNT -gt 3 ]; then
+              echo "  Deleting tag: $TAG"
+              git push origin --delete "$TAG" 2>/dev/null || true
+              git tag -d "$TAG" 2>/dev/null || true
+            fi
+          done
+          
+          echo "🗑️ Cleaning up old workflow runs..."
+          RUNS=$(gh run list --limit 100 --json databaseId,createdAt --jq 'sort_by(.createdAt) | reverse | .[].databaseId')
+          COUNT=0
+          CURRENT_RUN_ID="${{ github.run_id }}"
+          for RUN_ID in $RUNS; do
+            COUNT=$((COUNT + 1))
+            if [ "$RUN_ID" = "$CURRENT_RUN_ID" ]; then
+              echo "  Skipping current run: $RUN_ID"
+              continue
+            fi
+            if [ $COUNT -gt 3 ]; then
+              echo "  Deleting run: $RUN_ID"
+              gh run delete "$RUN_ID" --yes 2>/dev/null || true
+            fi
+          done
+          
+          echo "✅ Cleanup complete"
+          
+          # Build release body (limit to 300 chars)
+          RELEASE_BODY="Firmware: v${VERSION} (${CURRENT_SHORT})"$'\n\n'"Changes:"$'\n'"${COMMITS}"
+          
+          RELEASE_LEN=$(echo "$RELEASE_BODY" | wc -c)
+          if [ "$RELEASE_LEN" -gt 300 ]; then
+            RELEASE_BODY=$(echo "$RELEASE_BODY" | head -c 297)
+            RELEASE_BODY="${RELEASE_BODY}..."
+          fi
+          
+          echo "$RELEASE_BODY" > /tmp/release_body.txt
+          echo "📋 Release notes:"
+          cat /tmp/release_body.txt
+
       # ========== Delete old release ==========
       - name: Delete old release if tag exists
         if: success()
