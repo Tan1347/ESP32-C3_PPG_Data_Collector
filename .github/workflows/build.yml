@@ -1,0 +1,132 @@
+name: Build & Release Firmware
+
+on:
+  push:
+    branches: [master]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+env:
+  IDF_TARGET: esp32c3
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    container:
+      image: espressif/idf:v6.0.1
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Build firmware
+        run: |
+          . $IDF_PATH/export.sh
+          idf.py build
+
+      - name: Get firmware info
+        id: firmware
+        if: success()
+        run: |
+          BIN_SIZE=$(stat -c%s build/app.bin)
+          BIN_KB=$((BIN_SIZE / 1024))
+          echo "size_bytes=$BIN_SIZE" >> $GITHUB_OUTPUT
+          echo "size_kb=$BIN_KB" >> $GITHUB_OUTPUT
+          echo "📌 Firmware: ${BIN_KB}KB"
+
+      - name: Package firmware
+        if: success()
+        run: |
+          apt-get update -qq && apt-get install -y -qq p7zip-full > /dev/null 2>&1
+          
+          mkdir -p /tmp/release
+          cp build/app.bin /tmp/release/
+          cp build/bootloader/bootloader.bin /tmp/release/bootloader.bin
+          cp build/partition_table/partition-table.bin /tmp/release/
+          cp build/ota_data_initial.bin /tmp/release/
+          cp partitions.csv /tmp/release/
+          
+          # Create README
+          cat > /tmp/release/README.txt << 'EOF'
+          ESP32-C3 PPG Monitor Firmware
+          
+          Flash Command:
+          esptool --chip esp32c3 --flash_mode dio --flash_size 4MB --flash_freq 80m \
+            write_flash 0x0 bootloader.bin 0x8000 partition-table.bin \
+            0x11000 ota_data_initial.bin 0x20000 app.bin
+          
+          Files:
+          - bootloader.bin        -> 0x0
+          - partition-table.bin   -> 0x8000
+          - ota_data_initial.bin  -> 0x11000
+          - app.bin               -> 0x20000
+          EOF
+          
+          cd /tmp/release
+          7z a -t7z -m0=LZMA2 -mx=5 "/tmp/ppg-tf-esp32c3.7z" * > /dev/null
+          echo "📦 Package created"
+
+      - name: Generate release notes
+        id: release-notes
+        if: success()
+        run: |
+          CURRENT_SHORT=$(git rev-parse --short HEAD)
+          
+          # Find previous release tag
+          PREV_TAG=$(git tag -l "v*" --sort=-version:refname | head -1)
+          
+          if [ -n "$PREV_TAG" ]; then
+            COMMITS=$(git log --pretty=format:"- %s (%h)" "$PREV_TAG..HEAD" -10)
+          else
+            COMMITS=$(git log --pretty=format:"- %s (%h)" HEAD -10)
+          fi
+          
+          # Build release body (limit to 300 chars)
+          RELEASE_BODY="Firmware: v1.0.0 (${CURRENT_SHORT})"$'\n\n'"Changes:"$'\n'"${COMMITS}"
+          
+          if [ ${#RELEASE_BODY} -gt 300 ]; then
+            RELEASE_BODY="${RELEASE_BODY:0:297}..."
+          fi
+          
+          echo "$RELEASE_BODY" > /tmp/release_body.txt
+          echo "📋 Release notes (${#RELEASE_BODY} chars):"
+          cat /tmp/release_body.txt
+
+      - name: Delete old release if tag exists
+        if: success()
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          TAG="v1.0.0-$(git rev-parse --short HEAD)"
+          RELEASE_ID=$(gh release view "$TAG" --json id -q '.id' 2>/dev/null || true)
+          if [ -n "$RELEASE_ID" ]; then
+            echo "🗑️ Deleting old release $TAG"
+            gh release delete "$TAG" --yes --cleanup-tag
+          fi
+
+      - name: Create GitHub Release
+        if: success()
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: v1.0.0-${{ github.sha }}
+          name: "Firmware v1.0.0-$(git rev-parse --short HEAD)"
+          body_path: /tmp/release_body.txt
+          files: /tmp/ppg-tf-esp32c3.7z
+          draft: false
+          prerelease: false
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Build summary
+        if: always()
+        run: |
+          if [ "${{ job.status }}" = "success" ]; then
+            echo "✅ Build succeeded"
+            echo "📦 Firmware: ${{ steps.firmware.outputs.size_kb }}KB"
+          else
+            echo "❌ Build failed"
+          fi
