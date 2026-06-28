@@ -38,20 +38,20 @@ jobs:
           LAST_RELEASED=$(git tag -l "v*" --sort=-version:refname | head -1 | sed 's/^v//')
           echo "Last released: ${LAST_RELEASED:-none}"
           
-          # Parse versions
-          IFS='.' read -r F_MAJOR F_MINOR F_PATCH <<< "$FILE_VERSION"
+          # Parse versions using cut instead of IFS<<<
+          F_MAJOR=$(echo "$FILE_VERSION" | cut -d. -f1)
+          F_MINOR=$(echo "$FILE_VERSION" | cut -d. -f2)
+          F_PATCH=$(echo "$FILE_VERSION" | cut -d. -f3)
           
           if [ -n "$LAST_RELEASED" ]; then
-            IFS='.' read -r L_MAJOR L_MINOR L_PATCH <<< "$LAST_RELEASED"
+            L_MAJOR=$(echo "$LAST_RELEASED" | cut -d. -f1)
+            L_MINOR=$(echo "$LAST_RELEASED" | cut -d. -f2)
+            L_PATCH=$(echo "$LAST_RELEASED" | cut -d. -f3)
           else
             L_MAJOR=0; L_MINOR=0; L_PATCH=0
           fi
           
-          # Decision logic:
-          # If user changed MAJOR or MINOR in version.txt, use that version
-          # If user bumped PATCH, use that version
-          # Otherwise auto-increment patch
-          
+          # Decision logic
           if [ "$F_MAJOR" -gt "$L_MAJOR" ] || [ "$F_MINOR" -gt "$L_MINOR" ]; then
             NEW_VERSION="$FILE_VERSION"
             echo "📌 User bumped major/minor: $NEW_VERSION"
