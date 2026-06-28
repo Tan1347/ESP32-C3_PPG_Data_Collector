@@ -34,16 +34,17 @@ jobs:
           FILE_VERSION=$(cat version.txt | tr -d '[:space:]')
           echo "File version: $FILE_VERSION"
           
-          # Get the last released version from git tags
-          LAST_RELEASED=$(git tag -l "v*" --sort=-version:refname | head -1 | sed 's/^v//')
+          # Get the last released version from git tags (strip v prefix and commit hash)
+          LAST_TAG=$(git tag -l "v*" --sort=-version:refname | head -1)
+          LAST_RELEASED=$(echo "$LAST_TAG" | sed 's/^v//' | sed 's/-.*//')
           echo "Last released: ${LAST_RELEASED:-none}"
           
-          # Parse versions using cut instead of IFS<<<
+          # Parse versions using cut
           F_MAJOR=$(echo "$FILE_VERSION" | cut -d. -f1)
           F_MINOR=$(echo "$FILE_VERSION" | cut -d. -f2)
           F_PATCH=$(echo "$FILE_VERSION" | cut -d. -f3)
           
-          if [ -n "$LAST_RELEASED" ]; then
+          if [ -n "$LAST_RELEASED" ] && echo "$LAST_RELEASED" | grep -q '^[0-9]'; then
             L_MAJOR=$(echo "$LAST_RELEASED" | cut -d. -f1)
             L_MINOR=$(echo "$LAST_RELEASED" | cut -d. -f2)
             L_PATCH=$(echo "$LAST_RELEASED" | cut -d. -f3)
@@ -51,11 +52,13 @@ jobs:
             L_MAJOR=0; L_MINOR=0; L_PATCH=0
           fi
           
+          echo "Parsed: file=${F_MAJOR}.${F_MINOR}.${F_PATCH} last=${L_MAJOR}.${L_MINOR}.${L_PATCH}"
+          
           # Decision logic
-          if [ "$F_MAJOR" -gt "$L_MAJOR" ] || [ "$F_MINOR" -gt "$L_MINOR" ]; then
+          if [ "$F_MAJOR" -gt "$L_MAJOR" ] 2>/dev/null || [ "$F_MINOR" -gt "$L_MINOR" ] 2>/dev/null; then
             NEW_VERSION="$FILE_VERSION"
             echo "📌 User bumped major/minor: $NEW_VERSION"
-          elif [ "$F_PATCH" -gt "$L_PATCH" ]; then
+          elif [ "$F_PATCH" -gt "$L_PATCH" ] 2>/dev/null; then
             NEW_VERSION="$FILE_VERSION"
             echo "📌 User bumped patch: $NEW_VERSION"
           else
