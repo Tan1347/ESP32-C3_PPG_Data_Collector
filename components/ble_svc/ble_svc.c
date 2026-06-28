@@ -80,6 +80,8 @@ static bool s_connected = false;
 /* 状态数据 */
 static uint8_t s_status_data[20];
 static uint8_t s_live_data[10];
+static char s_wifi_list_buf[256];  /* WiFi list JSON buffer */
+static bool s_wifi_list_valid = false;  /* Whether WiFi list has been queried */
 
 /* 命令队列（事件驱动解耦） */
 #define CMD_QUEUE_DEPTH     8
@@ -330,13 +332,39 @@ static void cmd_wifi_list(uint8_t cmd, const uint8_t *data, uint8_t len)
 {
     (void)data; (void)len;
     PPG_LOGI(TAG, "cmd_wifi_list", __LINE__, "Query WiFi list");
-    char json[256];
-    s_cbs->wifi_get_list_json(json, sizeof(json));
+
+    /* Populate WiFi list buffer and send via Command characteristic */
+    s_cbs->wifi_get_list_json(s_wifi_list_buf, sizeof(s_wifi_list_buf));
+    s_wifi_list_valid = true;
+
+    /* Send JSON data as notification on Command characteristic (0xFFF3) */
     if (s_connected) {
-        struct os_mbuf *om = ble_hs_mbuf_from_flat(json, strlen(json));
-        if (om) ble_gattc_notify_custom(s_conn_handle, s_char_filelist_handle, om);
+        struct os_mbuf *om = ble_hs_mbuf_from_flat(s_wifi_list_buf, strlen(s_wifi_list_buf));
+        if (om) ble_gattc_notify_custom(s_conn_handle, s_char_cmd_handle, om);
     }
     ble_send_response(cmd, FRAME_STATUS_OK);
+}
+
+static void cmd_wifi_detail(uint8_t cmd, const uint8_t *data, uint8_t len)
+{
+    if (len < 1) {
+        ble_send_response(cmd, 0x02);  /* Bad request */
+        return;
+    }
+    uint8_t index = data[0];
+    PPG_LOGI(TAG, "cmd_wifi_detail", __LINE__, "Query WiFi detail: %d", index);
+
+    esp_err_t ret = s_cbs->wifi_get_detail_json(index, s_wifi_list_buf, sizeof(s_wifi_list_buf));
+    if (ret == ESP_OK) {
+        /* Send JSON data as notification on Command characteristic (0xFFF3) */
+        if (s_connected) {
+            struct os_mbuf *om = ble_hs_mbuf_from_flat(s_wifi_list_buf, strlen(s_wifi_list_buf));
+            if (om) ble_gattc_notify_custom(s_conn_handle, s_char_cmd_handle, om);
+        }
+        ble_send_response(cmd, FRAME_STATUS_OK);
+    } else {
+        ble_send_response(cmd, 0x05);  /* Data invalid */
+    }
 }
 
 static void cmd_wifi_clear(uint8_t cmd, const uint8_t *data, uint8_t len)
@@ -558,6 +586,7 @@ static const struct {
     { BLE_CMD_START_WIFI,    cmd_start_wifi },
     { BLE_CMD_WIFI_ADD,      cmd_wifi_add },
     { BLE_CMD_WIFI_LIST,     cmd_wifi_list },
+    { BLE_CMD_WIFI_DETAIL,   cmd_wifi_detail },
     { BLE_CMD_WIFI_CLEAR,    cmd_wifi_clear },
     { BLE_CMD_WIFI_DELETE,   cmd_wifi_delete },
     { BLE_CMD_OTA_ENTER,     cmd_ota_enter },
@@ -650,8 +679,7 @@ static int gatt_handler(uint16_t conn_handle, uint16_t attr_handle,
 
     case BLE_CHAR_FILELIST_UUID:
         if (ctxt->op == BLE_GATT_ACCESS_OP_READ_CHR) {
-            /* NOTE: sd_get_file_list performs SD card I/O which may be slow.
-             * Consider caching the file list and invalidating on SD card changes. */
+            /* File List characteristic - only returns SD card file list */
             char buf[512];
             int64_t t0 = esp_timer_get_time();
             s_cbs->sd_get_file_list(buf, sizeof(buf));

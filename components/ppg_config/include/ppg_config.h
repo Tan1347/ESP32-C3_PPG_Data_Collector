@@ -91,6 +91,7 @@ typedef enum {
 #define BLE_CMD_WIFI_CLEAR      0x12
 #define BLE_CMD_WIFI_DELETE     0x13
 #define BLE_CMD_WIFI_LIST       0x14
+#define BLE_CMD_WIFI_DETAIL     0x15    /* Query WiFi details by index */
 #define BLE_CMD_OTA_ENTER       0x20
 #define BLE_CMD_FW_VERSION      0x21
 #define BLE_CMD_QUERY_STATUS    0x22    /* Query full status (battery, version, WiFi) */

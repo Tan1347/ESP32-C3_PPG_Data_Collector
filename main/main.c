@@ -91,6 +91,7 @@ static const ble_callbacks_t s_ble_cbs = {
     .wifi_clear_all = wifi_prov_clear_all,
     .wifi_delete = wifi_prov_delete,
     .wifi_get_list_json = wifi_prov_get_list_json,
+    .wifi_get_detail_json = wifi_prov_get_detail_json,
     .wifi_is_connected = wifi_prov_is_connected,
     .wifi_get_ip = wifi_prov_get_ip,
     .sd_get_file_list = sd_storage_get_file_list,

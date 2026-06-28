@@ -73,6 +73,15 @@ esp_err_t wifi_prov_clear_all(void);
 esp_err_t wifi_prov_get_list_json(char *buf, size_t len);
 
 /**
+ * @brief Get WiFi details by index as JSON
+ * @param index WiFi index
+ * @param buf Output buffer
+ * @param len Buffer size
+ * @return ESP_OK on success
+ */
+esp_err_t wifi_prov_get_detail_json(uint8_t index, char *buf, size_t len);
+
+/**
  * @brief 获取当前连接状态 JSON
  * @param buf 输出缓冲区
  * @param len 缓冲区长度

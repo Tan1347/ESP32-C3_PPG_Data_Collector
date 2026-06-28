@@ -344,6 +344,34 @@ esp_err_t wifi_prov_get_list_json(char *buf, size_t len)
     return ESP_OK;
 }
 
+esp_err_t wifi_prov_get_detail_json(uint8_t index, char *buf, size_t len)
+{
+    if (index >= s_cred_count || !s_creds_mutex) {
+        return ESP_ERR_INVALID_ARG;
+    }
+
+    xSemaphoreTake(s_creds_mutex, portMAX_DELAY);
+
+    /* Check if this WiFi is currently connected */
+    bool is_connected = s_connected && strcmp(s_creds[index].ssid, s_current_ip) == 0;
+
+    snprintf(buf, len,
+             "{\"idx\":%d,\"ssid\":\"%s\",\"has_pass\":%s,"
+             "\"priority\":%d,\"rssi\":%d,\"fails\":%d,"
+             "\"connected\":%s,\"ip\":\"%s\"}",
+             index, s_creds[index].ssid,
+             strlen(s_creds[index].password) > 0 ? "true" : "false",
+             s_creds[index].priority,
+             s_creds[index].rssi_last,
+             s_creds[index].fail_count,
+             is_connected ? "true" : "false",
+             is_connected ? s_current_ip : "");
+
+    xSemaphoreGive(s_creds_mutex);
+
+    return ESP_OK;
+}
+
 esp_err_t wifi_prov_get_status_json(char *buf, size_t len)
 {
     snprintf(buf, len,

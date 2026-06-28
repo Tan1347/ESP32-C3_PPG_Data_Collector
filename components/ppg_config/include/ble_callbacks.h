@@ -31,6 +31,7 @@ typedef struct {
     esp_err_t (*wifi_clear_all)(void);
     esp_err_t (*wifi_delete)(uint8_t index);
     esp_err_t (*wifi_get_list_json)(char *buf, size_t len);
+    esp_err_t (*wifi_get_detail_json)(uint8_t index, char *buf, size_t len);
     bool (*wifi_is_connected)(void);
     esp_err_t (*wifi_get_ip)(char *buf, size_t len);
 
