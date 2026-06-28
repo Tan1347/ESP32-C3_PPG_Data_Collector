@@ -28,10 +28,11 @@
 
 static const char *TAG = "uart_rec";
 
-/* Double buffer configuration - sized for 5Mbps sustained recording */
-/* At 5Mbps: ~625KB/s, 16KB buffer fills in ~25ms, 32KB fills in ~50ms */
-#define BUF_SIZE        (32 * 1024)     /* 32KB per buffer (2 x 32KB = 64KB total) */
-#define UART_RX_BUF_SIZE (64 * 1024)    /* 64KB UART driver RX buffer for DMA */
+/* Double buffer configuration - balanced for memory and speed */
+/* At 115200 baud: ~11KB/s, 4KB buffer fills in ~350ms */
+/* At 5Mbps: ~625KB/s, 4KB buffer fills in ~6ms */
+#define BUF_SIZE        (4 * 1024)      /* 4KB per buffer (2 x 4KB = 8KB total) */
+#define UART_RX_BUF_SIZE (8 * 1024)     /* 8KB UART driver RX buffer for DMA */
 #define MAX_FILE_SIZE   (10 * 1024 * 1024)  /* 10MB per file */
 #define READ_INTERVAL_MS 10             /* 10ms read interval for high-speed capture */
 #define MOUNT_POINT     "/sdcard"
