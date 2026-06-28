@@ -27,33 +27,50 @@ jobs:
         run: git config --global --add safe.directory "$GITHUB_WORKSPACE"
 
       # ========== Version management ==========
-      - name: Read and increment version
+      - name: Calculate version
         id: version
         run: |
-          # Read current version
-          CURRENT_VERSION=$(cat version.txt | tr -d '[:space:]')
-          echo "Current version: $CURRENT_VERSION"
+          # Read current version from version.txt
+          FILE_VERSION=$(cat version.txt | tr -d '[:space:]')
+          echo "File version: $FILE_VERSION"
           
-          # Parse version components
-          IFS='.' read -r MAJOR MINOR PATCH <<< "$CURRENT_VERSION"
+          # Get the last released version from git tags
+          LAST_RELEASED=$(git tag -l "v*" --sort=-version:refname | head -1 | sed 's/^v//')
+          echo "Last released: ${LAST_RELEASED:-none}"
           
-          # Increment patch version
-          NEW_PATCH=$((PATCH + 1))
-          NEW_VERSION="${MAJOR}.${MINOR}.${NEW_PATCH}"
+          # Parse versions
+          IFS='.' read -r F_MAJOR F_MINOR F_PATCH <<< "$FILE_VERSION"
           
-          echo "New version: $NEW_VERSION"
+          if [ -n "$LAST_RELEASED" ]; then
+            IFS='.' read -r L_MAJOR L_MINOR L_PATCH <<< "$LAST_RELEASED"
+          else
+            L_MAJOR=0; L_MINOR=0; L_PATCH=0
+          fi
+          
+          # Decision logic:
+          # If user changed MAJOR or MINOR in version.txt, use that version
+          # If user bumped PATCH, use that version
+          # Otherwise auto-increment patch
+          
+          if [ "$F_MAJOR" -gt "$L_MAJOR" ] || [ "$F_MINOR" -gt "$L_MINOR" ]; then
+            NEW_VERSION="$FILE_VERSION"
+            echo "📌 User bumped major/minor: $NEW_VERSION"
+          elif [ "$F_PATCH" -gt "$L_PATCH" ]; then
+            NEW_VERSION="$FILE_VERSION"
+            echo "📌 User bumped patch: $NEW_VERSION"
+          else
+            NEW_PATCH=$((L_PATCH + 1))
+            NEW_VERSION="${L_MAJOR}.${L_MINOR}.${NEW_PATCH}"
+            echo "📌 Auto-incremented: $NEW_VERSION"
+          fi
           
           # Save to outputs
-          echo "current=$CURRENT_VERSION" >> $GITHUB_OUTPUT
           echo "new=$NEW_VERSION" >> $GITHUB_OUTPUT
-          echo "major=$MAJOR" >> $GITHUB_OUTPUT
-          echo "minor=$MINOR" >> $GITHUB_OUTPUT
-          echo "patch=$NEW_PATCH" >> $GITHUB_OUTPUT
           
           # Update version.txt
           echo "$NEW_VERSION" > version.txt
           
-          echo "📌 Version: $CURRENT_VERSION -> $NEW_VERSION"
+          echo "📌 Version: $FILE_VERSION -> $NEW_VERSION"
 
       # ========== Get commit info ==========
       - name: Get commit info
