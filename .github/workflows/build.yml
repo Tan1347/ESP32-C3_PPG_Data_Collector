@@ -26,6 +26,36 @@ jobs:
       - name: Fix git ownership
         run: git config --global --add safe.directory "$GITHUB_WORKSPACE"
 
+      # ========== Version management ==========
+      - name: Read and increment version
+        id: version
+        run: |
+          # Read current version
+          CURRENT_VERSION=$(cat version.txt | tr -d '[:space:]')
+          echo "Current version: $CURRENT_VERSION"
+          
+          # Parse version components
+          IFS='.' read -r MAJOR MINOR PATCH <<< "$CURRENT_VERSION"
+          
+          # Increment patch version
+          NEW_PATCH=$((PATCH + 1))
+          NEW_VERSION="${MAJOR}.${MINOR}.${NEW_PATCH}"
+          
+          echo "New version: $NEW_VERSION"
+          
+          # Save to outputs
+          echo "current=$CURRENT_VERSION" >> $GITHUB_OUTPUT
+          echo "new=$NEW_VERSION" >> $GITHUB_OUTPUT
+          echo "major=$MAJOR" >> $GITHUB_OUTPUT
+          echo "minor=$MINOR" >> $GITHUB_OUTPUT
+          echo "patch=$NEW_PATCH" >> $GITHUB_OUTPUT
+          
+          # Update version.txt
+          echo "$NEW_VERSION" > version.txt
+          
+          echo "📌 Version: $CURRENT_VERSION -> $NEW_VERSION"
+
+      # ========== Get commit info ==========
       - name: Get commit info
         id: commit
         run: |
@@ -88,6 +118,7 @@ jobs:
         run: |
           apt-get update -qq && apt-get install -y -qq p7zip-full > /dev/null 2>&1
           
+          VERSION="${{ steps.version.outputs.new }}"
           mkdir -p /tmp/release
           cp build/app.bin /tmp/release/
           cp build/bootloader/bootloader.bin /tmp/release/bootloader.bin
@@ -96,12 +127,12 @@ jobs:
           cp partitions.csv /tmp/release/
           
           # Create README
-          cat > /tmp/release/README.txt << 'READMEEOF'
-          ESP32-C3 PPG Monitor Firmware
+          cat > /tmp/release/README.txt << READMEEOF
+          ESP32-C3 PPG Monitor Firmware v${VERSION}
           
           Flash Command:
-          esptool --chip esp32c3 --flash_mode dio --flash_size 4MB --flash_freq 80m \
-            write_flash 0x0 bootloader.bin 0x8000 partition-table.bin \
+          esptool --chip esp32c3 --flash_mode dio --flash_size 4MB --flash_freq 80m \\
+            write_flash 0x0 bootloader.bin 0x8000 partition-table.bin \\
             0x11000 ota_data_initial.bin 0x20000 app.bin
           
           Files:
@@ -112,15 +143,16 @@ jobs:
           READMEEOF
           
           cd /tmp/release
-          7z a -t7z -m0=LZMA2 -mx=5 "/tmp/ppg-tf-esp32c3.7z" * > /dev/null
-          echo "📦 Package created"
+          7z a -t7z -m0=LZMA2 -mx=5 "/tmp/ppg-tf-esp32c3-v${VERSION}.7z" * > /dev/null
+          echo "📦 Package created: ppg-tf-esp32c3-v${VERSION}.7z"
 
       # ========== Generate release notes ==========
       - name: Generate release notes
         id: release-notes
         if: success()
         run: |
-          CURRENT_SHORT=$(git rev-parse --short HEAD)
+          VERSION="${{ steps.version.outputs.new }}"
+          CURRENT_SHORT="${{ steps.commit.outputs.short_sha }}"
           
           # Find previous release tag
           PREV_TAG=$(git tag -l "v*" --sort=-version:refname | head -1)
@@ -132,7 +164,7 @@ jobs:
           fi
           
           # Build release body (limit to 300 chars)
-          RELEASE_BODY="Firmware: v1.0.0 (${CURRENT_SHORT})"$'\n\n'"Changes:"$'\n'"${COMMITS}"
+          RELEASE_BODY="Firmware: v${VERSION} (${CURRENT_SHORT})"$'\n\n'"Changes:"$'\n'"${COMMITS}"
           
           if [ ${#RELEASE_BODY} -gt 300 ]; then
             RELEASE_BODY="${RELEASE_BODY:0:297}..."
@@ -142,13 +174,24 @@ jobs:
           echo "📋 Release notes (${#RELEASE_BODY} chars):"
           cat /tmp/release_body.txt
 
+      # ========== Commit version update ==========
+      - name: Commit version update
+        if: success()
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add version.txt
+          git commit -m "chore: bump version to ${{ steps.version.outputs.new }} [skip ci]"
+          git push origin master
+
       # ========== Delete old release ==========
       - name: Delete old release if tag exists
         if: success()
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
-          TAG="v1.0.0-$(git rev-parse --short HEAD)"
+          VERSION="${{ steps.version.outputs.new }}"
+          TAG="v${VERSION}"
           RELEASE_ID=$(gh release view "$TAG" --json id -q '.id' 2>/dev/null || true)
           if [ -n "$RELEASE_ID" ]; then
             echo "🗑️ Deleting old release $TAG"
@@ -160,10 +203,10 @@ jobs:
         if: success()
         uses: softprops/action-gh-release@v2
         with:
-          tag_name: v1.0.0-${{ steps.commit.outputs.short_sha }}
-          name: "Firmware v1.0.0-${{ steps.commit.outputs.short_sha }}"
+          tag_name: v${{ steps.version.outputs.new }}
+          name: "Firmware v${{ steps.version.outputs.new }}"
           body_path: /tmp/release_body.txt
-          files: /tmp/ppg-tf-esp32c3.7z
+          files: /tmp/ppg-tf-esp32c3-v${{ steps.version.outputs.new }}.7z
           draft: false
           prerelease: false
         env:
@@ -175,6 +218,7 @@ jobs:
         run: |
           if [ "${{ job.status }}" = "success" ]; then
             echo "✅ Build succeeded"
+            echo "📦 Version: v${{ steps.version.outputs.new }}"
             echo "📦 Firmware: ${{ steps.firmware.outputs.size_kb }}KB"
           else
             echo "❌ Build failed"

@@ -13,9 +13,6 @@ sdkconfig.old
 # Generated version header
 components/ppg_config/include/version_ts.h
 
-# CI generated version file
-version.txt
-
 # Compile logs
 *.log
 
