@@ -27,8 +27,18 @@ picolibc `vfprintf` 内部使用约 8KB 栈空间。在 32KB 主任务栈上：
 
 ```bash
 cd esp32c3
-source ~/esp/v6.0.1/esp-idf/export.sh
-bash build.sh
+source ~/esp/esp-idf-v6.0.1/export.sh
+idf.py build
+```
+
+## 烧录命令
+
+```bash
+esptool --chip esp32c3 --flash_mode dio --flash_size 4MB --flash_freq 80m \
+  write_flash 0x0 build/bootloader/bootloader.bin \
+  0x8000 build/partition_table/partition-table.bin \
+  0x11000 build/ota_data_initial.bin \
+  0x20000 build/app.bin
 ```
 
 ## GPIO 分配
@@ -37,16 +47,16 @@ bash build.sh
 |------|------|------|
 | 0 | 32K晶振 | XTAL_32K_P |
 | 1 | 32K晶振 | XTAL_32K_N |
-| 2 | SD_SPI_CLK | TF卡时钟 |
+| 2 | BUTTON1 | 用户按钮 |
 | 3 | SD_SPI_MOSI | TF卡数据 |
 | 4 | BATT_ADC | 电池电压 |
 | 5 | MAX_INT | MAX30102 中断（Deep-sleep 唤醒） |
 | 6 | DHT11 | 温湿度传感器 |
 | 7 | SD_SPI_CS | TF卡片选 |
-| 8 | Card_CD | TF卡检测 |
+| 8 | Card_CD | TF卡检测（禁用，GPIO8 是 strapping pin） |
 | 9 | BOOT | 启动按钮 |
 | 10 | SD_SPI_MISO | TF卡数据 |
-| 11 | BUTTON1 | 用户按钮 |
+| 11 | SD_SPI_CLK | TF卡时钟 |
 | 12 | PPG_LED | 采集状态灯（硬件固定） |
 | 13 | SYS_LED | 系统状态灯（硬件固定） |
 | 14-17 | EXT_FLASH | 外挂Flash（硬件占用） |
@@ -59,8 +69,10 @@ bash build.sh
 
 ```c
 // ppg_config.h
-#define BLE_DEBUG_ENABLE    1   // BLE 调试日志 (0=关闭, 1=开启)
 #define BATTERY_CHECK_ENABLE 0  // 电池低电检查 (0=禁用, 1=启用)
+
+// components/ble_svc/ble_svc.c
+#define BLE_DEBUG_ENABLE    1   // BLE 调试日志 (0=关闭, 1=开启)
 ```
 
 ## BLE 帧协议

@@ -19,7 +19,7 @@
 | PPG 算法 | 纯定点运算，5 秒滑动窗口，峰值检测 + Hamming 滤波 |
 | BLE | NimBLE 协议栈，帧协议通信（0xAA 帧头 + SUM 校验） |
 | WiFi | Station 模式，HTTP Server，文件传输 + Web 管理 + OTA |
-| TF 卡 | FAT32 + LZ4 压缩，主备缓冲 (32KB+8KB)，SPI 400kHz→20MHz |
+| TF 卡 | FAT32 + LZ4 压缩，主备缓冲 (16KB+4KB)，SPI 400kHz→20MHz |
 | UART 录制 | 双缓冲 DMA (2x32KB)，支持 9600~5Mbps 波特率 |
 | DHT11 | 温湿度监测，二进制格式存储 |
 | OTA | 双分区 A/B，SHA-256 校验，60 秒启动自检，失败自动回滚 |
@@ -230,8 +230,9 @@ CHECKSUM = SUM(CMD + LEN + DATA 各字节) & 0xFF
 ```
 偏移  长度  字段       类型    说明
 0     1     batt_pct   uint8   电池电量百分比 (0-100)
-1-3   3     reserved   uint8   保留 (0x00)
-4     1     connected  uint8   WiFi 连接状态 (0=未连接, 1=已连接)
+1-2   2     voltage    uint16  电压 (big-endian, ×100 mV)
+3     1     reserved   uint8   保留 (0x00)
+4     1     connected  uint8   BLE 连接状态 (0=断开, 1=已连接)
 5-19  15    version    char[]  固件版本字符串 (UTF-8, 空字符填充)
 ```
 
@@ -312,15 +313,26 @@ BLE 调试宏默认开启：
 ### 编译
 
 ```bash
-./build.sh          # 增量编译
-./build.sh clean    # 清理后全量编译
+source ~/esp/esp-idf-v6.0.1/export.sh
+idf.py build          # 增量编译
+idf.py fullclean      # 清理后全量编译
 ```
 
 ### 烧录
 
 ```bash
-. $HOME/esp/esp-idf-v6.0.1/export.sh
+source ~/esp/esp-idf-v6.0.1/export.sh
 idf.py -p /dev/ttyUSB0 flash monitor
+```
+
+或使用 esptool：
+
+```bash
+esptool --chip esp32c3 --flash_mode dio --flash_size 4MB --flash_freq 80m \
+  write_flash 0x0 build/bootloader/bootloader.bin \
+  0x8000 build/partition_table/partition-table.bin \
+  0x11000 build/ota_data_initial.bin \
+  0x20000 build/app.bin
 ```
 
 ### 串口监控
@@ -387,7 +399,8 @@ WiFi 连接后通过局域网 IP 访问。
 | Deep-sleep | - | 仅 GPIO5 唤醒，约 10uA |
 
 **WiFi 优化**：
-- 发射功率降至 8.5dBm (34 * 0.25dBm)
+- WiFi 缓冲区配置：RX=10, Dynamic RX=12, TX=10（默认值过小导致内存分配失败）
+- 发射功率降至 7.75dBm (31 * 0.25dBm)
 - 启用省电模式
 - 指数退避重连 (1s→30s)，最多 10 次尝试
 - PMF/WPA3 兼容 (`pmf_cfg.capable = true`)
@@ -448,6 +461,10 @@ WiFi 连接后通过局域网 IP 访问。
 | Deep-sleep 唤醒失败 | 误用 Light-sleep API | 使用 esp_sleep_enable_gpio_wakeup_on_hp_periph_powerdown() |
 | BLE 校验码不匹配 | App 用 XOR，固件用 SUM | 已修复：双方统一用 SUM |
 | WiFi Add 解析错误 | 固件用 1 字节 SSID_LEN，App 发 2 字节 | 已修复：固件改为 2 字节大端序解析 |
+| WDT 核心转储 | main 任务 portMAX_DELAY 阻塞未喂狗 | 已修复：改用 1 秒超时循环 |
+| WiFi 初始化内存不足 | SD 缓冲区占用 48KB | 已修复：缩减为 24KB + WiFi 模式前释放 |
+| BLE 状态查询超时 | App 使用 readCharacteristic 而非通知 | 已修复：改为监听 statusData 通知 |
+| sd_storage_release_buffers 崩溃 | SD 卡未挂载时 mutex 为 NULL | 已修复：添加 NULL 检查 |
 
 ---
 
@@ -546,17 +563,17 @@ WiFi 连接后通过局域网 IP 访问。
 
 | 任务 | 优先级 | 栈大小 | 说明 |
 |------|--------|--------|------|
-| sys_led_task | 1 | 2KB | GPIO13 系统心跳灯，每 1 秒翻转，喂看门狗 |
-| ppg_led_task | 1 | 2KB | GPIO12 PPG 状态灯，闪烁频率随数据率变化 |
-| button1_task | 2 | 2KB | BUTTON1 按钮检测（单击/双击/长按） |
+| sys_led_task | 1 | 4KB | GPIO13 系统心跳灯，每 1 秒翻转，喂看门狗 |
+| ppg_led_task | 1 | 3KB | GPIO12 PPG 状态灯，闪烁频率随数据率变化 |
+| button1_task | 2 | 3KB | BUTTON1 按钮检测（单击/双击/长按） |
 
 **采集任务**（按需创建/销毁）：
 
 | 任务 | 优先级 | 栈大小 | 说明 |
 |------|--------|--------|------|
 | ppg_task | 5 | 4KB | I2C 读取 MAX30102 + 算法处理 + TF 卡写入 |
-| power_task | 1 | 2KB | ADC 电池电压监控，10 秒间隔 |
-| dht11_task | 2 | 2KB | DHT11 温湿度采集，10 秒间隔 |
+| power_task | 1 | 3KB | ADC 电池电压监控，10 秒间隔 |
+| dht11_task | 2 | 3KB | DHT11 温湿度采集，10 秒间隔 |
 
 **BLE 任务**（BLE 初始化时创建）：
 
@@ -601,8 +618,34 @@ WiFi 连接后通过局域网 IP 访问。
 
 ---
 
+## 版本管理
+
+固件版本通过 `version.txt` 文件管理：
+
+```bash
+# 查看当前版本
+cat version.txt
+
+# 设置新版本
+echo "1.1.0" > version.txt
+```
+
+## CI/CD
+
+推送到 `master` 分支会自动触发 GitHub Actions：
+1. 使用 ESP-IDF v6.0.1 Docker 容器编译
+2. 自动生成版本号（读取 version.txt，自动递增 patch）
+3. 打包为 7z 压缩包
+4. 创建 GitHub Release
+
 ## 版本历史
 
 | 版本 | 日期 | 变更 |
 |------|------|------|
 | 1.0.0 | 2026-06-19 | 初始版本 |
+| 1.0.1 | 2026-06-28 | 修复 WDT 核心转储、WiFi 内存泄露、BLE 状态查询超时、mutex 崩溃 |
+
+| 版本 | 日期 | 变更 |
+|------|------|------|
+| 1.0.0 | 2026-06-19 | 初始版本 |
+| 1.0.1 | 2026-06-28 | 修复 WDT 核心转储、WiFi 内存泄露、BLE 状态查询超时 |
