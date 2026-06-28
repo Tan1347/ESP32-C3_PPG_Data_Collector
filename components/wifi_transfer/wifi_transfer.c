@@ -544,6 +544,7 @@ static esp_err_t api_tasks_info_handler(httpd_req_t *req)
     char buf[1024];
     int pos = 0;
 
+#if CONFIG_FREERTOS_USE_TRACE_FACILITY
     /* Get task count */
     UBaseType_t task_count = uxTaskGetNumberOfTasks();
     TaskStatus_t *task_status = malloc(sizeof(TaskStatus_t) * task_count);
@@ -576,6 +577,10 @@ static esp_err_t api_tasks_info_handler(httpd_req_t *req)
     } else {
         pos += snprintf(buf + pos, sizeof(buf) - pos, "{\"tasks\":[]}");
     }
+#else
+    pos += snprintf(buf + pos, sizeof(buf) - pos,
+        "{\"tasks\":[],\"note\":\"Trace facility disabled\"}");
+#endif
 
     httpd_resp_set_type(req, "application/json");
     httpd_resp_send(req, buf, pos);
