@@ -78,7 +78,18 @@ static esp_err_t load_from_nvs(void)
     s_cred_count = count;
     nvs_close(handle);
 
-    ESP_LOGI(TAG, "Loaded %d WiFi creds from NVS", s_cred_count);
+    ESP_LOGI(TAG, "Loaded %d WiFi cred(s) from NVS", s_cred_count);
+    for (int i = 0; i < s_cred_count; i++) {
+        int pw_len = strlen(s_creds[i].password);
+        ESP_LOGI(TAG, "  [%d] SSID=\"%.32s\" priority=%d fails=%d",
+                 i, s_creds[i].ssid, s_creds[i].priority, s_creds[i].fail_count);
+        if (pw_len > 0) {
+            ESP_LOGI(TAG, "       Password: %d chars (****)", pw_len);
+        } else {
+            ESP_LOGI(TAG, "       Password: (open)");
+        }
+    }
+
     return ESP_OK;
 }
 
@@ -258,7 +269,9 @@ esp_err_t wifi_prov_add(const char *ssid, const char *password, uint8_t priority
             s_creds[i].fail_count = 0;
             ESP_LOGI(TAG, "Update existing WiFi: %s", ssid);
             xSemaphoreGive(s_creds_mutex);
-            return save_to_nvs();
+            esp_err_t ret = save_to_nvs();
+            ESP_LOGI(TAG, "Save to NVS result: %s", esp_err_to_name(ret));
+            return ret;
         }
     }
 
@@ -276,7 +289,9 @@ esp_err_t wifi_prov_add(const char *ssid, const char *password, uint8_t priority
     xSemaphoreGive(s_creds_mutex);
 
     ESP_LOGI(TAG, "Add WiFi #%d: %s (prio %d)", s_cred_count - 1, ssid, priority);
-    return save_to_nvs();
+    esp_err_t ret = save_to_nvs();
+    ESP_LOGI(TAG, "Save to NVS result: %s", esp_err_to_name(ret));
+    return ret;
 }
 
 esp_err_t wifi_prov_delete(uint8_t index)
