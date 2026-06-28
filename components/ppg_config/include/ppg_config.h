@@ -132,11 +132,11 @@ typedef enum {
 /* ==================== Task Stack Sizes ==================== */
 #define STACK_PPG_TASK          4096
 #define STACK_BLE_CMD           4096
-#define STACK_SYS_LED           4096
-#define STACK_PPG_LED           3072
-#define STACK_BUTTON1           3072
-#define STACK_POWER             3072
-#define STACK_DHT11             3072
+#define STACK_SYS_LED           3072
+#define STACK_PPG_LED           2048
+#define STACK_BUTTON1           2048
+#define STACK_POWER             2048
+#define STACK_DHT11             2048
 
 /* ==================== Timeouts (ms) ==================== */
 #define TIMEOUT_BLE_PAIR_WAKEUP     30000
