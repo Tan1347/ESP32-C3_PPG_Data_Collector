@@ -26,54 +26,13 @@ jobs:
       - name: Fix git ownership
         run: git config --global --add safe.directory "$GITHUB_WORKSPACE"
 
-      # ========== Version management ==========
-      - name: Calculate version
+      # ========== Version (read only, user controlled) ==========
+      - name: Read version
         id: version
         run: |
-          # Read current version from version.txt
-          FILE_VERSION=$(cat version.txt | tr -d '[:space:]')
-          echo "File version: $FILE_VERSION"
-          
-          # Get the last released version from git tags (strip v prefix and commit hash)
-          LAST_TAG=$(git tag -l "v*" --sort=-version:refname | head -1)
-          LAST_RELEASED=$(echo "$LAST_TAG" | sed 's/^v//' | sed 's/-.*//')
-          echo "Last released: ${LAST_RELEASED:-none}"
-          
-          # Parse versions using cut
-          F_MAJOR=$(echo "$FILE_VERSION" | cut -d. -f1)
-          F_MINOR=$(echo "$FILE_VERSION" | cut -d. -f2)
-          F_PATCH=$(echo "$FILE_VERSION" | cut -d. -f3)
-          
-          if [ -n "$LAST_RELEASED" ] && echo "$LAST_RELEASED" | grep -q '^[0-9]'; then
-            L_MAJOR=$(echo "$LAST_RELEASED" | cut -d. -f1)
-            L_MINOR=$(echo "$LAST_RELEASED" | cut -d. -f2)
-            L_PATCH=$(echo "$LAST_RELEASED" | cut -d. -f3)
-          else
-            L_MAJOR=0; L_MINOR=0; L_PATCH=0
-          fi
-          
-          echo "Parsed: file=${F_MAJOR}.${F_MINOR}.${F_PATCH} last=${L_MAJOR}.${L_MINOR}.${L_PATCH}"
-          
-          # Decision logic
-          if [ "$F_MAJOR" -gt "$L_MAJOR" ] 2>/dev/null || [ "$F_MINOR" -gt "$L_MINOR" ] 2>/dev/null; then
-            NEW_VERSION="$FILE_VERSION"
-            echo "📌 User bumped major/minor: $NEW_VERSION"
-          elif [ "$F_PATCH" -gt "$L_PATCH" ] 2>/dev/null; then
-            NEW_VERSION="$FILE_VERSION"
-            echo "📌 User bumped patch: $NEW_VERSION"
-          else
-            NEW_PATCH=$((L_PATCH + 1))
-            NEW_VERSION="${L_MAJOR}.${L_MINOR}.${NEW_PATCH}"
-            echo "📌 Auto-incremented: $NEW_VERSION"
-          fi
-          
-          # Save to outputs
-          echo "new=$NEW_VERSION" >> $GITHUB_OUTPUT
-          
-          # Update version.txt
-          echo "$NEW_VERSION" > version.txt
-          
-          echo "📌 Version: $FILE_VERSION -> $NEW_VERSION"
+          VERSION=$(cat version.txt | tr -d '[:space:]')
+          echo "version=$VERSION" >> $GITHUB_OUTPUT
+          echo "📌 Version: $VERSION"
 
       # ========== Get commit info ==========
       - name: Get commit info
@@ -138,7 +97,7 @@ jobs:
         run: |
           apt-get update -qq && apt-get install -y -qq p7zip-full > /dev/null 2>&1
           
-          VERSION="${{ steps.version.outputs.new }}"
+          VERSION="${{ steps.version.outputs.version }}"
           mkdir -p /tmp/release
           cp build/app.bin /tmp/release/
           cp build/bootloader/bootloader.bin /tmp/release/bootloader.bin
@@ -171,7 +130,7 @@ jobs:
         id: release-notes
         if: success()
         run: |
-          VERSION="${{ steps.version.outputs.new }}"
+          VERSION="${{ steps.version.outputs.version }}"
           CURRENT_SHORT="${{ steps.commit.outputs.short_sha }}"
           
           # Find previous release tag
@@ -194,23 +153,13 @@ jobs:
           echo "📋 Release notes (${#RELEASE_BODY} chars):"
           cat /tmp/release_body.txt
 
-      # ========== Commit version update ==========
-      - name: Commit version update
-        if: success()
-        run: |
-          git config user.name "github-actions[bot]"
-          git config user.email "github-actions[bot]@users.noreply.github.com"
-          git add version.txt
-          git commit -m "chore: bump version to ${{ steps.version.outputs.new }} [skip ci]"
-          git push origin master
-
       # ========== Delete old release ==========
       - name: Delete old release if tag exists
         if: success()
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
-          VERSION="${{ steps.version.outputs.new }}"
+          VERSION="${{ steps.version.outputs.version }}"
           TAG="v${VERSION}"
           RELEASE_ID=$(gh release view "$TAG" --json id -q '.id' 2>/dev/null || true)
           if [ -n "$RELEASE_ID" ]; then
@@ -223,10 +172,10 @@ jobs:
         if: success()
         uses: softprops/action-gh-release@v2
         with:
-          tag_name: v${{ steps.version.outputs.new }}
-          name: "Firmware v${{ steps.version.outputs.new }}"
+          tag_name: v${{ steps.version.outputs.version }}
+          name: "Firmware v${{ steps.version.outputs.version }}"
           body_path: /tmp/release_body.txt
-          files: /tmp/ppg-tf-esp32c3-v${{ steps.version.outputs.new }}.7z
+          files: /tmp/ppg-tf-esp32c3-v${{ steps.version.outputs.version }}.7z
           draft: false
           prerelease: false
         env:
@@ -238,7 +187,7 @@ jobs:
         run: |
           if [ "${{ job.status }}" = "success" ]; then
             echo "✅ Build succeeded"
-            echo "📦 Version: v${{ steps.version.outputs.new }}"
+            echo "📦 Version: v${{ steps.version.outputs.version }}"
             echo "📦 Firmware: ${{ steps.firmware.outputs.size_kb }}KB"
           else
             echo "❌ Build failed"
