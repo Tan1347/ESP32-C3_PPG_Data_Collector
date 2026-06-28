@@ -23,11 +23,45 @@ jobs:
         with:
           fetch-depth: 0
 
+      # ========== Cache ccache ==========
+      - name: Restore ccache
+        uses: actions/cache@v4
+        with:
+          path: ~/.ccache
+          key: esp32c3-ccache-${{ github.ref_name }}-${{ github.sha }}
+          restore-keys: |
+            esp32c3-ccache-${{ github.ref_name }}-
+            esp32c3-ccache-
+
+      # ========== Configure ccache ==========
+      - name: Configure ccache
+        run: |
+          mkdir -p ~/.ccache
+          cat > ~/.ccache/ccache.conf << EOF
+          max_size = 2G
+          compiler_check = content
+          hash_dir = false
+          compression = true
+          compression_level = 6
+          EOF
+          ccache -z
+          echo "✅ ccache configured"
+
+      # ========== Build firmware ==========
       - name: Build firmware
         run: |
           . $IDF_PATH/export.sh
+          
+          # Enable ccache
+          export CCACHE_DIR=~/.ccache
+          export IDF_CCACHE_ENABLE=1
+          
           idf.py build
+          
+          # Show ccache stats
+          ccache -s
 
+      # ========== Get firmware info ==========
       - name: Get firmware info
         id: firmware
         if: success()
@@ -38,6 +72,7 @@ jobs:
           echo "size_kb=$BIN_KB" >> $GITHUB_OUTPUT
           echo "📌 Firmware: ${BIN_KB}KB"
 
+      # ========== Package firmware ==========
       - name: Package firmware
         if: success()
         run: |
@@ -51,7 +86,7 @@ jobs:
           cp partitions.csv /tmp/release/
           
           # Create README
-          cat > /tmp/release/README.txt << 'EOF'
+          cat > /tmp/release/README.txt << 'READMEEOF'
           ESP32-C3 PPG Monitor Firmware
           
           Flash Command:
@@ -64,12 +99,13 @@ jobs:
           - partition-table.bin   -> 0x8000
           - ota_data_initial.bin  -> 0x11000
           - app.bin               -> 0x20000
-          EOF
+          READMEEOF
           
           cd /tmp/release
           7z a -t7z -m0=LZMA2 -mx=5 "/tmp/ppg-tf-esp32c3.7z" * > /dev/null
           echo "📦 Package created"
 
+      # ========== Generate release notes ==========
       - name: Generate release notes
         id: release-notes
         if: success()
@@ -96,6 +132,7 @@ jobs:
           echo "📋 Release notes (${#RELEASE_BODY} chars):"
           cat /tmp/release_body.txt
 
+      # ========== Delete old release ==========
       - name: Delete old release if tag exists
         if: success()
         env:
@@ -108,6 +145,7 @@ jobs:
             gh release delete "$TAG" --yes --cleanup-tag
           fi
 
+      # ========== Create release ==========
       - name: Create GitHub Release
         if: success()
         uses: softprops/action-gh-release@v2
@@ -121,6 +159,7 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
+      # ========== Summary ==========
       - name: Build summary
         if: always()
         run: |
