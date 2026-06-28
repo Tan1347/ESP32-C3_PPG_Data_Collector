@@ -636,9 +636,8 @@ static void enter_wifi_mode(void)
 
     /* Get network time */
     esp_http_client_config_t http_cfg = {
-        .url = "https://ip.ddnspod.com/timestamp",
+        .url = "http://ip.ddnspod.com/timestamp",
         .timeout_ms = TIMEOUT_WDT,
-        .skip_cert_common_name_check = true,
     };
     esp_http_client_handle_t client = esp_http_client_init(&http_cfg);
     if (client) {
