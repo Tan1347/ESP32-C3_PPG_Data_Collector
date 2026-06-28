@@ -662,23 +662,29 @@ void sd_storage_release_buffers(void)
         sd_storage_flush();
     }
 
-    xSemaphoreTake(s_buf_mutex, portMAX_DELAY);
-    if (s_primary_buf.data) { free(s_primary_buf.data); s_primary_buf.data = NULL; }
-    if (s_backup_buf.data) { free(s_backup_buf.data); s_backup_buf.data = NULL; }
-    s_active_buf = NULL;
-    xSemaphoreGive(s_buf_mutex);
+    if (s_buf_mutex) {
+        xSemaphoreTake(s_buf_mutex, portMAX_DELAY);
+        if (s_primary_buf.data) { free(s_primary_buf.data); s_primary_buf.data = NULL; }
+        if (s_backup_buf.data) { free(s_backup_buf.data); s_backup_buf.data = NULL; }
+        s_active_buf = NULL;
+        xSemaphoreGive(s_buf_mutex);
+    }
 
-    xSemaphoreTake(s_csv_mutex, portMAX_DELAY);
-    if (s_csv_buf) { free(s_csv_buf); s_csv_buf = NULL; }
-    s_csv_buf_pos = 0;
-    if (s_csv_fd >= 0) { close(s_csv_fd); s_csv_fd = -1; }
-    xSemaphoreGive(s_csv_mutex);
+    if (s_csv_mutex) {
+        xSemaphoreTake(s_csv_mutex, portMAX_DELAY);
+        if (s_csv_buf) { free(s_csv_buf); s_csv_buf = NULL; }
+        s_csv_buf_pos = 0;
+        if (s_csv_fd >= 0) { close(s_csv_fd); s_csv_fd = -1; }
+        xSemaphoreGive(s_csv_mutex);
+    }
 
-    xSemaphoreTake(s_dht11_mutex, portMAX_DELAY);
-    if (s_dht11_buf) { free(s_dht11_buf); s_dht11_buf = NULL; }
-    s_dht11_buf_pos = 0;
-    if (s_dht11_fd >= 0) { close(s_dht11_fd); s_dht11_fd = -1; }
-    xSemaphoreGive(s_dht11_mutex);
+    if (s_dht11_mutex) {
+        xSemaphoreTake(s_dht11_mutex, portMAX_DELAY);
+        if (s_dht11_buf) { free(s_dht11_buf); s_dht11_buf = NULL; }
+        s_dht11_buf_pos = 0;
+        if (s_dht11_fd >= 0) { close(s_dht11_fd); s_dht11_fd = -1; }
+        xSemaphoreGive(s_dht11_mutex);
+    }
 
     if (s_raw_fd >= 0) { close(s_raw_fd); s_raw_fd = -1; }
 
